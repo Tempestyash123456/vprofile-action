@@ -58,4 +58,36 @@ jobs:
           auto_tag: latest,${{github.run_number}}
           daemon_off: false
           dockerfile: ./Dockerfile
-          context: ./       
+          context: ./   
+
+  DEPLOY_TO_EKS:
+    needs: BUILD_AND_PUBLISH
+    runs-on: ubuntu-latest
+    steps:
+      - name: Code checkout
+        uses: actions/checkout@v4
+      - name: configure aws credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: get kubeconfig file
+        run: aws eks --region ${{ env.AWS_REGION }} update-kubeconfig --name ${{ env.EKS_CLUSTER }}
+      - name: print kubeconfig file
+        run: cat ~/.kube/config    
+      - name: login to ECR
+        run: kubectl create secret docker-registry regcred --docker-server=${{ secrets.REGISTRY }} --docker-username=AWS --docker-password=${{ aws get-login-password --region ${{ env.AWS_REGION }} }}
+      - name: Deploy helm
+        uses: bitovi/github-actions-deploy-eks-helm@v1.2.8
+        with: 
+          aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws_region: ${{ env.AWS_REGION }}
+          cluster_name: ${{ env.EKS_CLUSTER }}
+          namespace: default
+          chart-path: helm/vprofilecharts
+          release: vprofile
+          values: apiImage=${{ secrets.REGISTRY }}/${{ env.ECR_REPOSITORY }},appTag=${{github.run_number}}
+          name: vprofile-stack
+          
